@@ -34,14 +34,14 @@ and also returns the same `Model` type.
 The key constructor of ParameterJuMP is:
 
 ```julia
-Parameter(model::JuMP.Model, value::Number)
+add_parameter(model::JuMP.Model, value::Number)
 ```
 
-Which adds a parameter fixed at `value` to the JuMP model: `model`.
-It is possible to create mutiple parameters at the same time with:
+Which adds a parameter fixed at `value` to the JuMP model `model`.
+It is possible to create multiple parameters at the same time with:
 
 ```julia
-Parameters(model::JuMP.Model, values::Vector{Number})
+add_parameters(model::JuMP.Model, values::Vector{Number})
 ```
 
 Which returns a vector of parameters.
@@ -50,14 +50,14 @@ It is possible to change the current value of a parameter with the
 function:
 
 ```julia
-fix(p::Parameter, new_value::Number)
+fix(p::ParameterRef, new_value::Number)
 ```
 
 Finally, the `dual` function of JuMP is overloaded to return duals
 for parameters:
 
 ```julia
-dual(p::Parameter)
+dual(p::ParameterRef)
 ```
 
 Last but not least!
@@ -68,11 +68,11 @@ The parameter algebra was implemented so that is possible to:
 - sum parameters and variables
 - sum parameters and affine expressions
 
-All the operations related to linear constraints are implmented.
+All the operations related to linear constraints are implemented.
 
 ### Simple example
 
-Lets use JuMP plus ParameterJuMP the optimization problem:
+Lets use JuMP plus ParameterJuMP to solve the optimization problem:
 
 ```
 min   x
@@ -80,7 +80,7 @@ s.t.  x >= a
 ```
 
 where `x` is a variable and `a` is a constant.
-We can also solve it for diffenrent values of `a`.
+We can also solve it for different values of `a`.
 
 ```julia
 # Create a JuMP model able to handle parameters
@@ -90,7 +90,7 @@ model = ModelWithParams(with_optimizer(SOME_SOLVER.Optimizer))
 @variable(model, x)
 
 # Create a parameter fixed at 10
-Parameter(model, a, 10)
+add_parameter(model, a, 10)
 
 # adds a constraint mixing variables and parameters to the model
 @constraint(model, x >= a)
@@ -101,7 +101,7 @@ optimize!(model)
 # query dual variable of the constant a
 dual(a)
 
-# modify the value of the parameter a to 20 
+# modify the value of the parameter a to 20
 fix(a, 20)
 
 # solve the model with the new value of the parameter
@@ -136,11 +136,12 @@ for multiple values of <img src="http://latex.codecogs.com/gif.latex?y" border="
 to query dual values from <img src="http://latex.codecogs.com/gif.latex?y" border="0"/>. This dual values are computed by applying
 the chain rule on the duals of the constraints.
 
-In pure JuMP we can acomplish these tasks by creating dummy fixed variables.
-So that we can easily change their fixed values and query duals from fixing
-constraints.
 
 ### Pure JuMP version
+
+In pure JuMP we can acomplish these tasks by creating dummy fixed variables,
+so that we can easily change their fixed values and query duals from fixing
+constraints.
 
 One example in pure JuMP goes as follows:
 
@@ -157,7 +158,7 @@ model_pure = Model(with_optimizer(SOME_SOLVER.Optimizer))
 @constraint(model_pure, fix_y[j in 1:M], y[i] == y_fixed[i])
 
 # add constraints
-@constraint(model_pure, ctr[k in 1:P], 
+@constraint(model_pure, ctr[k in 1:P],
     sum(A[i,k]*x[i] for i in 1:N) == b[k] - sum(D[j,k]*y[j] for j in 1:M))
 
 # create objective function
@@ -180,7 +181,7 @@ y_duals = dual.(fix_y)
 ```
 
 The main problem with this approach is that it creates to many dummy
-variable that are added without real need to the solver representation
+variables that are added without real need to the solver representation
 of the optimization problem. Hence solve times are increased without
 real need!!!
 
@@ -196,12 +197,12 @@ model_pure = Model(with_optimizer(SOME_SOLVER.Optimizer))
 @variable(model_pure, x[1:N] >= 0)
 
 # add dummy fixed variables
-y = [Parameter(model_pure, value_for_y[i]) for i in 1:M]
+y = [add_parameter(model_pure, value_for_y[i]) for i in 1:M]
 # or
-# y = Parameters(model_pure, value_for_y)
+# y = add_parameters(model_pure, value_for_y)
 
 # add constraints
-@constraint(model_pure, ctr[k in 1:P], 
+@constraint(model_pure, ctr[k in 1:P],
     sum(A[i,k]*x[i] for i in 1:N) == b[k] - sum(D[j,k]*y[j] for j in 1:M))
 
 # create objective function
