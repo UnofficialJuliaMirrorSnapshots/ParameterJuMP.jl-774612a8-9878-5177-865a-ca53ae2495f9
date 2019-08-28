@@ -9,7 +9,7 @@ const MOI = MathOptInterface
 const MOIU = MOI.Utilities
 
 export
-ModelWithParams, ParameterRef, add_parameter, add_parameters, all_parameters, Param
+ModelWithParams, ParameterRef, add_parameter, add_parameters, all_parameters, Param, parametrized_dual_objective_value
 
 # types
 # ------------------------------------------------------------------------------
@@ -340,6 +340,14 @@ function sync(data::ParameterData)
 end
 function sync(model::JuMP.Model)
     sync(_getparamdata(model))
+end
+
+function parametrized_dual_objective_value(model::JuMP.AbstractModel)
+    params = all_parameters(model)
+    linear = [param => dual(param) for param in params]
+    obj = dual_objective_value(model)
+    constant = obj - sum(value(term.first) * term.second for term in linear)
+    return GenericAffExpr(constant, linear)
 end
 
 # constraints

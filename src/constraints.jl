@@ -87,6 +87,31 @@ function JuMP.isequal_canonical(aff::DGAE{C,V,P}, other::DGAE{C,V,P}) where {C,V
     # This is the current behavior, but it seems questionable.
     return isequal(aff_nozeros, other_nozeros)
 end
+function Base.isapprox(x::GAEp, y::GAEp; kws...)
+    if !isapprox(x.constant, y.constant; kws...)
+        return false
+    end
+    x = dropzeros(x)
+    y = dropzeros(y)
+    if length(linear_terms(x)) != length(linear_terms(y))
+        return false
+    end
+    for (coef, var) in linear_terms(x)
+        c = get(y.terms, var, nothing)
+        if c === nothing
+            return false
+        elseif !isapprox(coef, c; kws...)
+            return false
+        end
+    end
+    return true
+end
+function Base.isapprox(x::GAEp, y::PAE; kws...)
+    return isapprox(x, y.p + y.v.constant; kws...)
+end
+function Base.isapprox(x::PAE, y::GAEp; kws...)
+    return isapprox(y, x; kws...)
+end
 
 Base.convert(::Type{PAE{C}}, v::JuMP.VariableRef) where {C} = PAE{C}(GAEv{C}(zero(C), v => one(C)), zero(GAEp{C}))
 Base.convert(::Type{PAE{C}}, p::ParameterRef) where {C} = PAE{C}(zero(GAEv{C}), GAEp{C}(zero(C), p => one(C)))
@@ -131,16 +156,10 @@ end
 # Build constraint
 # ------------------------------------------------------------------------------
 
-# TODO should be in MOI, MOIU or JuMP
-_shift_constant(set::S, offset) where S <: Union{MOI.LessThan,MOI.GreaterThan,MOI.EqualTo} = S(MOIU.getconstant(set) + offset)
-function _shift_constant(set::MOI.Interval, offset)
-    MOI.Interval(set.lower + offset, set.upper + offset)
-end
-
 function JuMP.build_constraint(_error::Function, aff::PAE, set::S) where S <: Union{MOI.LessThan,MOI.GreaterThan,MOI.EqualTo}
     offset = aff.v.constant
     aff.v.constant = 0.0
-    shifted_set = _shift_constant(set, -offset)
+    shifted_set = MOIU.shift_constant(set, -offset)
     return JuMP.ScalarConstraint(aff, shifted_set)
 end
 
@@ -200,13 +219,7 @@ end
 
 function _update_constraint(data::ParameterData, cref, val::Number)
     if !iszero(val)
-        ci = JuMP.index(cref)
-        old_set = MOI.get(cref.model.moi_backend, MOI.ConstraintSet(), ci)
-        # For scalar constraints, the constant in the function is zero and the
-        # constant is stored in the set. Since `pcr.coef` corresponds to the
-        # coefficient in the function, we need to take `-pcr.coef`.
-        new_set = _shift_constant(old_set, -val)
-        MOI.set(cref.model.moi_backend, MOI.ConstraintSet(), ci, new_set)
+        JuMP.add_to_function_constant(cref, val)
     end
     return nothing
 end
